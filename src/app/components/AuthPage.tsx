@@ -114,11 +114,29 @@ export function AuthPage({ onNavigate }: AuthPageProps) {
     setError('');
     setLoading(true);
 
-    // Ensure demo accounts exist in Supabase (idempotent)
-    try {
-      await anonFetch('/seed-demo', { method: 'POST' });
-    } catch (seedErr) {
-      console.error('Demo seed warning (non-blocking):', seedErr);
+    // Ensure demo accounts exist in Supabase (idempotent) — must succeed before login
+    let seedOk = false;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const seedRes = await anonFetch('/seed-demo', { method: 'POST' });
+        if (seedRes.ok) {
+          const seedData = await seedRes.json();
+          console.log('Seed-demo result:', seedData);
+          seedOk = true;
+          break;
+        } else {
+          const errBody = await seedRes.text();
+          console.error(`Seed-demo attempt ${attempt + 1} failed (status ${seedRes.status}):`, errBody);
+        }
+      } catch (seedErr) {
+        console.error(`Seed-demo attempt ${attempt + 1} network error:`, seedErr);
+      }
+      // Small delay before retry
+      if (attempt < 1) await new Promise(r => setTimeout(r, 1000));
+    }
+
+    if (!seedOk) {
+      console.warn('Seed-demo failed after retries, attempting login anyway');
     }
 
     const result = await login(demoEmail, demoPassword);

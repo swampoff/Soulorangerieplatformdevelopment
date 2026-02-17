@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Menu, X, User, GraduationCap, Shield, LogIn, LogOut, ChevronDown, Bell, Search } from 'lucide-react';
+import { Menu, X, User, GraduationCap, Shield, LogIn, LogOut, ChevronDown, Bell, Search, Settings } from 'lucide-react';
 import { Button } from './ui/button';
 import { useAuth } from './AuthContext';
 import { authFetch } from './api';
@@ -176,7 +176,7 @@ export function Header({ currentPage, onNavigate }: HeaderProps) {
                 key={item.id}
                 onClick={() => onNavigate(item.id)}
                 className={`px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
-                  currentPage === item.id
+                  currentPage === item.id || (item.id === 'practices' && currentPage.startsWith('practice:'))
                     ? 'bg-primary/10 text-primary'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                 }`}
@@ -378,6 +378,13 @@ export function Header({ currentPage, onNavigate }: HeaderProps) {
                               Админ-панель
                             </button>
                           )}
+                          <button
+                            onClick={() => { onNavigate('profile-settings'); setUserMenuOpen(false); }}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted/50 cursor-pointer"
+                          >
+                            <Settings className="w-4 h-4 text-muted-foreground" />
+                            Настройки
+                          </button>
                         </div>
                         <div className="border-t border-border py-1">
                           <button
@@ -443,7 +450,7 @@ export function Header({ currentPage, onNavigate }: HeaderProps) {
                     setMobileOpen(false);
                   }}
                   className={`px-3 py-2 rounded-lg text-sm text-left transition-colors cursor-pointer ${
-                    currentPage === item.id
+                    currentPage === item.id || (item.id === 'practices' && currentPage.startsWith('practice:'))
                       ? 'bg-primary/10 text-primary'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
@@ -508,6 +515,16 @@ export function Header({ currentPage, onNavigate }: HeaderProps) {
                       <Shield className="w-4 h-4" /> Админ-панель
                     </button>
                   )}
+
+                  <button
+                    onClick={() => {
+                      onNavigate('profile-settings');
+                      setMobileOpen(false);
+                    }}
+                    className="px-3 py-2 rounded-lg text-sm text-left text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-2"
+                  >
+                    <Settings className="w-4 h-4" /> Настройки
+                  </button>
 
                   <button
                     onClick={() => {

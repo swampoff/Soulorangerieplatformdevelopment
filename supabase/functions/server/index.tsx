@@ -177,8 +177,17 @@ app.post("/make-server-5b6cbf80/seed-demo", async (c) => {
 
       if (existing) {
         userId = existing.id;
-        // Ensure password is correct
-        await supabase.auth.admin.updateUserById(userId, { password: demo.password });
+        // Ensure password is correct AND email is confirmed
+        const { error: updateError } = await supabase.auth.admin.updateUserById(userId, {
+          password: demo.password,
+          email_confirm: true,
+          user_metadata: { name: demo.name },
+        });
+        if (updateError) {
+          console.log(`Seed-demo: failed to update ${demo.email}: ${updateError.message}`);
+          results.push({ email: demo.email, status: `update-error: ${updateError.message}` });
+          continue;
+        }
       } else {
         const { data, error } = await supabase.auth.admin.createUser({
           email: demo.email,
@@ -766,8 +775,34 @@ app.get("/make-server-5b6cbf80/notifications", async (c) => {
     // Merge: dynamic first (deduplicated by id), then stored
     const allIds = new Set(stored.map(n => n.id));
     const mergedDynamic = dynamic.filter(d => !allIds.has(d.id));
+    const allNotifications = [...mergedDynamic, ...stored];
 
-    return c.json({ notifications: [...mergedDynamic, ...stored] });
+    // Filter by user notification preferences
+    const userSettings = (await kv.get(`user:settings:${user.id}`)) as Record<string, unknown> | null;
+    const prefs = (userSettings?.notifications || {}) as Record<string, boolean>;
+    
+    // Map notification types to preference keys
+    const typeToPreference: Record<string, string> = {
+      booking: "bookingConfirmations",
+      "booking-cancel": "bookingConfirmations",
+      "review-reply": "reviewReplies",
+      review: "reviewReplies",
+      streak: "practiceReminders",
+      "practice-complete": "practiceReminders",
+      progress: "practiceReminders",
+      reminder: "scheduleReminders",
+      achievement: "achievementAlerts",
+      welcome: "practiceReminders", // always show welcome
+    };
+
+    const filtered = allNotifications.filter((n) => {
+      const prefKey = typeToPreference[n.type];
+      // If no mapping exists or no explicit preference set, show by default
+      if (!prefKey || prefs[prefKey] === undefined) return true;
+      return prefs[prefKey] !== false;
+    });
+
+    return c.json({ notifications: filtered });
   } catch (err) {
     console.log(`Get notifications error: ${err}`);
     return c.json({ error: `Failed to get notifications: ${err}` }, 500);
@@ -810,6 +845,164 @@ app.post("/make-server-5b6cbf80/notifications/mark-read", async (c) => {
   } catch (err) {
     console.log(`Mark notifications read error: ${err}`);
     return c.json({ error: `Failed to mark notifications: ${err}` }, 500);
+  }
+});
+
+// ============================================================
+// USER SETTINGS (notification preferences, digest, etc.)
+// ============================================================
+
+// GET /user/settings — Get user notification preferences and settings
+app.get("/make-server-5b6cbf80/user/settings", async (c) => {
+  try {
+    const user = await getAuthUser(c.req.header("Authorization"));
+    if (!user) {
+      return c.json({ error: "Unauthorized in GET /user/settings" }, 401);
+    }
+
+    const settings = (await kv.get(`user:settings:${user.id}`)) || {
+      notifications: {
+        bookingConfirmations: true,
+        reviewReplies: true,
+        practiceReminders: true,
+        scheduleReminders: true,
+        achievementAlerts: true,
+        weeklyDigest: true,
+        promotions: false,
+        newPractices: true,
+      },
+      digestFrequency: "weekly",
+      language: "ru",
+      timezone: "Europe/Moscow",
+    };
+
+    return c.json(settings);
+  } catch (err) {
+    console.log(`Get user settings error: ${err}`);
+    return c.json({ error: `Failed to get settings: ${err}` }, 500);
+  }
+});
+
+// PUT /user/settings — Update user settings
+app.put("/make-server-5b6cbf80/user/settings", async (c) => {
+  try {
+    const user = await getAuthUser(c.req.header("Authorization"));
+    if (!user) {
+      return c.json({ error: "Unauthorized in PUT /user/settings" }, 401);
+    }
+
+    const updates = await c.req.json();
+    const existing = (await kv.get(`user:settings:${user.id}`)) as Record<string, unknown> || {};
+    
+    const updated = {
+      ...existing,
+      ...updates,
+      notifications: {
+        ...(existing.notifications as Record<string, boolean> || {}),
+        ...(updates.notifications || {}),
+      },
+    };
+
+    await kv.set(`user:settings:${user.id}`, updated);
+    console.log(`Updated settings for user ${user.id}: digestFrequency=${updated.digestFrequency}`);
+    return c.json(updated);
+  } catch (err) {
+    console.log(`Update user settings error: ${err}`);
+    return c.json({ error: `Failed to update settings: ${err}` }, 500);
+  }
+});
+
+// GET /notifications/digest — Generate a digest summary of recent notifications
+app.get("/make-server-5b6cbf80/notifications/digest", async (c) => {
+  try {
+    const user = await getAuthUser(c.req.header("Authorization"));
+    if (!user) {
+      return c.json({ error: "Unauthorized in GET /notifications/digest" }, 401);
+    }
+
+    const period = c.req.query("period") || "weekly";
+
+    const now = Date.now();
+    let msAgo: number;
+    let periodLabel: string;
+    switch (period) {
+      case "daily":
+        msAgo = 24 * 60 * 60 * 1000;
+        periodLabel = "За последние 24 часа";
+        break;
+      case "monthly":
+        msAgo = 30 * 24 * 60 * 60 * 1000;
+        periodLabel = "За последний месяц";
+        break;
+      case "weekly":
+      default:
+        msAgo = 7 * 24 * 60 * 60 * 1000;
+        periodLabel = "За последнюю неделю";
+        break;
+    }
+    const cutoff = now - msAgo;
+
+    interface DigestNotif {
+      id: string;
+      type: string;
+      title: string;
+      message: string;
+      createdAt: string;
+      read: boolean;
+      icon: string;
+      link?: string;
+    }
+
+    const allNotifs: DigestNotif[] = (await kv.get(`user:notifications:${user.id}`)) as DigestNotif[] || [];
+    const periodNotifs = allNotifs.filter((n) => new Date(n.createdAt).getTime() >= cutoff);
+    const unreadCount = periodNotifs.filter((n) => !n.read).length;
+
+    const summary = { bookings: 0, reviews: 0, achievements: 0, practices: 0, other: 0 };
+    for (const n of periodNotifs) {
+      if (n.type === "booking" || n.type === "booking-cancel") summary.bookings++;
+      else if (n.type === "review-reply" || n.type === "review") summary.reviews++;
+      else if (n.type === "achievement") summary.achievements++;
+      else if (n.type === "practice-complete" || n.type === "streak" || n.type === "progress") summary.practices++;
+      else summary.other++;
+    }
+
+    const unread = periodNotifs.filter((n) => !n.read);
+    const readNotifs = periodNotifs.filter((n) => n.read);
+    const highlights = [...unread, ...readNotifs].slice(0, 10).map((n) => ({
+      type: n.type,
+      title: n.title,
+      message: n.message,
+      icon: n.icon,
+      createdAt: n.createdAt,
+    }));
+
+    const progress = (await kv.get(`user:progress:${user.id}`)) as Record<string, unknown> || {};
+    const practiceCount = (progress.practiceCount as number) || 0;
+    const streakDays = (progress.streakDays as number) || 0;
+
+    if (practiceCount > 0 && highlights.length < 10) {
+      highlights.push({
+        type: "summary",
+        title: `${practiceCount} практик пройдено`,
+        message: streakDays > 0 ? `Текущая серия: ${streakDays} дней подряд` : "Продолжайте заниматься!",
+        icon: "📊",
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    console.log(`Generated digest for user ${user.id}: period=${period}, total=${periodNotifs.length}, unread=${unreadCount}`);
+
+    return c.json({
+      period: periodLabel,
+      totalNotifications: periodNotifs.length,
+      unreadCount,
+      summary,
+      highlights,
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.log(`Get digest error: ${err}`);
+    return c.json({ error: `Failed to generate digest: ${err}` }, 500);
   }
 });
 
@@ -891,6 +1084,12 @@ interface Review {
   practiceId: string;
   practiceTitle: string;
   createdAt: string;
+  reply?: {
+    text: string;
+    authorName: string;
+    authorId: string;
+    createdAt: string;
+  };
 }
 
 // POST /reviews — Submit a review for a practice
@@ -1401,6 +1600,152 @@ app.get("/make-server-5b6cbf80/search-history", async (c) => {
   } catch (err) {
     console.log(`Get search history error: ${err}`);
     return c.json({ history: [] });
+  }
+});
+
+// ============================================================
+// REVIEW REPLIES — Instructor/Admin can reply to reviews
+// ============================================================
+
+// POST /reviews/:practiceId/:reviewId/reply — Add a reply to a review
+app.post("/make-server-5b6cbf80/reviews/:practiceId/:reviewId/reply", async (c) => {
+  try {
+    const user = await getAuthUser(c.req.header("Authorization"));
+    if (!user) {
+      return c.json({ error: "Unauthorized in POST /reviews/reply" }, 401);
+    }
+
+    const profile = await kv.get(`user:profile:${user.id}`);
+    const role = (profile as { role?: string })?.role;
+    if (role !== "instructor" && role !== "admin") {
+      return c.json({ error: "Forbidden: only instructors and admins can reply to reviews" }, 403);
+    }
+
+    const practiceId = c.req.param("practiceId");
+    const reviewId = c.req.param("reviewId");
+    const { text } = await c.req.json();
+
+    if (!text || !text.trim()) {
+      return c.json({ error: "Reply text is required" }, 400);
+    }
+
+    const reviews: Review[] = (await kv.get(`reviews:practice:${practiceId}`)) as Review[] || [];
+    const idx = reviews.findIndex((r) => r.id === reviewId);
+    if (idx === -1) {
+      return c.json({ error: "Review not found" }, 404);
+    }
+
+    const authorName = (profile as { name?: string })?.name || "Преподаватель";
+
+    reviews[idx].reply = {
+      text: String(text).trim().slice(0, 1000),
+      authorName,
+      authorId: user.id,
+      createdAt: new Date().toISOString(),
+    };
+
+    await kv.set(`reviews:practice:${practiceId}`, reviews);
+
+    // Create notification for the review author
+    const reviewUserId = reviews[idx].userId;
+    if (reviewUserId && reviewUserId !== user.id) {
+      interface Notif {
+        id: string;
+        type: string;
+        title: string;
+        message: string;
+        createdAt: string;
+        read: boolean;
+        icon: string;
+        link?: string;
+      }
+      const notifs: Notif[] = (await kv.get(`user:notifications:${reviewUserId}`)) as Notif[] || [];
+      notifs.unshift({
+        id: `reply-${reviewId}-${Date.now()}`,
+        type: "review-reply",
+        title: "Ответ на ваш отзыв",
+        message: `${authorName} ответил на ваш отзыв к практике «${reviews[idx].practiceTitle}»`,
+        createdAt: new Date().toISOString(),
+        read: false,
+        icon: "💬",
+        link: `practice:${practiceId}`,
+      });
+      if (notifs.length > 50) notifs.length = 50;
+      await kv.set(`user:notifications:${reviewUserId}`, notifs);
+    }
+
+    console.log(`Reply added to review ${reviewId} by ${authorName} for practice ${practiceId}`);
+    return c.json({ success: true, review: reviews[idx] });
+  } catch (err) {
+    console.log(`Reply to review error: ${err}`);
+    return c.json({ error: `Failed to reply to review: ${err}` }, 500);
+  }
+});
+
+// ============================================================
+// ADMIN EXPORT — CSV data export
+// ============================================================
+
+// GET /admin/export/users — Export users as CSV
+app.get("/make-server-5b6cbf80/admin/export/users", async (c) => {
+  try {
+    const { user, error } = await requireAdmin(c.req.header("Authorization"));
+    if (!user) return c.json({ error: `Admin export: ${error}` }, error === "Unauthorized" ? 401 : 403);
+
+    const supabase = adminClient();
+    const { data } = await supabase
+      .from("kv_store_5b6cbf80")
+      .select("key, value")
+      .like("key", "user:profile:%");
+
+    const rows: string[] = ["Имя,Email,Роль,Тариф,Практик,Минут,Серия дней"];
+    for (const row of data || []) {
+      const userId = row.key.replace("user:profile:", "");
+      const p = row.value as { name?: string; email?: string; role?: string; plan?: string };
+      const progress = (await kv.get(`user:progress:${userId}`)) as { practiceCount?: number; totalMinutes?: number; streakDays?: number } || {};
+      rows.push(
+        `"${(p.name || '').replace(/"/g, '""')}","${p.email || ''}","${p.role || 'student'}","${p.plan || 'free'}",${progress.practiceCount || 0},${progress.totalMinutes || 0},${progress.streakDays || 0}`
+      );
+    }
+
+    console.log(`Admin exported ${rows.length - 1} users as CSV`);
+    return c.json({ csv: rows.join("\n"), filename: `users-${new Date().toISOString().split("T")[0]}.csv` });
+  } catch (err) {
+    console.log(`Admin export users error: ${err}`);
+    return c.json({ error: `Failed to export users: ${err}` }, 500);
+  }
+});
+
+// GET /admin/export/reviews — Export reviews as CSV
+app.get("/make-server-5b6cbf80/admin/export/reviews", async (c) => {
+  try {
+    const { user, error } = await requireAdmin(c.req.header("Authorization"));
+    if (!user) return c.json({ error: `Admin export: ${error}` }, error === "Unauthorized" ? 401 : 403);
+
+    const supabase = adminClient();
+    const { data } = await supabase
+      .from("kv_store_5b6cbf80")
+      .select("key, value")
+      .like("key", "reviews:practice:%");
+
+    const rows: string[] = ["Пользователь,Практика,Рейтинг,Текст,Дата,Ответ преподавателя"];
+    for (const row of data || []) {
+      const list = row.value as Review[];
+      if (Array.isArray(list)) {
+        for (const r of list) {
+          const replyText = r.reply ? `${r.reply.authorName}: ${r.reply.text}` : '';
+          rows.push(
+            `"${(r.userName || '').replace(/"/g, '""')}","${(r.practiceTitle || '').replace(/"/g, '""')}",${r.rating},"${(r.text || '').replace(/"/g, '""')}","${r.createdAt}","${replyText.replace(/"/g, '""')}"`
+          );
+        }
+      }
+    }
+
+    console.log(`Admin exported ${rows.length - 1} reviews as CSV`);
+    return c.json({ csv: rows.join("\n"), filename: `reviews-${new Date().toISOString().split("T")[0]}.csv` });
+  } catch (err) {
+    console.log(`Admin export reviews error: ${err}`);
+    return c.json({ error: `Failed to export reviews: ${err}` }, 500);
   }
 });
 

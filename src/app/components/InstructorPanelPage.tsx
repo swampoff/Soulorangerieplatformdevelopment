@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Users, Calendar, Star, TrendingUp, Plus,
   Clock, Eye, MessageSquare, Video,
-  BarChart3, Edit, Radio, Loader2, ChevronDown, ChevronUp
+  BarChart3, Edit, Radio, Loader2, ChevronDown, ChevronUp, Send
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
@@ -33,6 +33,12 @@ interface ReviewData {
   practiceId: string;
   practiceTitle: string;
   createdAt: string;
+  reply?: {
+    text: string;
+    authorName: string;
+    authorId: string;
+    createdAt: string;
+  };
 }
 
 interface StudentData {
@@ -85,6 +91,11 @@ export function InstructorPanelPage({ onNavigate }: InstructorPanelPageProps) {
   const [sessionStudents, setSessionStudents] = useState<Record<string, StudentData[]>>({});
   const [expandedSession, setExpandedSession] = useState<string | null>(null);
   const [loadingStudents, setLoadingStudents] = useState<Set<string>>(new Set());
+
+  // Reply state
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const [submittingReply, setSubmittingReply] = useState(false);
 
   // Determine the instructor from the user profile
   const currentInstructor = INSTRUCTORS.find(
@@ -162,6 +173,34 @@ export function InstructorPanelPage({ onNavigate }: InstructorPanelPageProps) {
     toast.success(`Практика «${newPractice.title}» создана и отправлена на модерацию`);
     setShowCreateForm(false);
     setNewPractice({ title: '', description: '', direction: '', level: '', format: '', duration: '' });
+  };
+
+  // Handle reply to review
+  const handleReplySubmit = async (reviewId: string, practiceId: string) => {
+    if (!accessToken || !replyText.trim()) return;
+    setSubmittingReply(true);
+    try {
+      const res = await authFetch(`/reviews/${practiceId}/${reviewId}/reply`, accessToken, {
+        method: 'POST',
+        body: JSON.stringify({ text: replyText.trim() }),
+      });
+      if (res.ok) {
+        toast.success('Ответ отправлен! Ученик получит уведомление.');
+        setReplyingTo(null);
+        setReplyText('');
+        // Refresh stats to get updated reviews
+        loadStats();
+      } else {
+        const data = await res.json();
+        console.error('Reply error:', data.error);
+        toast.error(data.error || 'Не удалось отправить ответ');
+      }
+    } catch (err) {
+      console.error('Reply error:', err);
+      toast.error('Ошибка подключения к серверу');
+    } finally {
+      setSubmittingReply(false);
+    }
   };
 
   // Derived values
@@ -727,14 +766,92 @@ export function InstructorPanelPage({ onNavigate }: InstructorPanelPageProps) {
                         </div>
                       </div>
                       <p className="text-sm text-muted-foreground">{fb.text}</p>
+
+                      {/* Existing reply display */}
+                      {fb.reply && (
+                        <div className="mt-3 pl-4 border-l-2 border-[#7A9B6D]/30 bg-[#7A9B6D]/5 rounded-r-lg p-3">
+                          <div className="flex items-center gap-2 mb-1">
+                            <div className="w-5 h-5 rounded-full bg-[#7A9B6D]/20 flex items-center justify-center text-[9px] text-[#7A9B6D]">
+                              {fb.reply.authorName.charAt(0)}
+                            </div>
+                            <span className="text-xs font-medium text-[#7A9B6D]">{fb.reply.authorName}</span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {new Date(fb.reply.createdAt).toLocaleDateString('ru-RU')}
+                            </span>
+                          </div>
+                          <p className="text-xs text-foreground/80">{fb.reply.text}</p>
+                        </div>
+                      )}
+
                       <div className="flex items-center justify-between mt-3">
                         <p className="text-xs text-muted-foreground">
                           {new Date(fb.createdAt).toLocaleDateString('ru-RU')}
                         </p>
-                        <Button variant="ghost" size="sm" className="text-xs" onClick={() => toast.info('Ответ на отзыв')}>
-                          Ответить
-                        </Button>
+                        {!fb.reply ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-xs gap-1.5"
+                            onClick={() => { setReplyingTo(fb.id); setReplyText(''); }}
+                          >
+                            <Send className="w-3 h-3" />
+                            Ответить
+                          </Button>
+                        ) : (
+                          <Badge className="text-[10px] border-0 bg-[#7A9B6D]/10 text-[#7A9B6D]">
+                            Ответ отправлен
+                          </Badge>
+                        )}
                       </div>
+
+                      {/* Inline reply form */}
+                      {replyingTo === fb.id && (
+                        <div className="mt-3 pt-3 border-t border-border/50">
+                          <div className="flex items-start gap-3">
+                            <div className="w-7 h-7 rounded-full bg-[#7A9B6D]/15 flex items-center justify-center text-[10px] text-[#7A9B6D] shrink-0 mt-1">
+                              {currentInstructor.name.charAt(0)}
+                            </div>
+                            <div className="flex-1">
+                              <Textarea
+                                placeholder="Напишите ответ ученику..."
+                                value={replyText}
+                                onChange={(e) => setReplyText(e.target.value)}
+                                className="bg-white/60 min-h-[80px] text-sm resize-none"
+                                autoFocus
+                              />
+                              <div className="flex items-center justify-between mt-2">
+                                <span className="text-[10px] text-muted-foreground">
+                                  {replyText.length}/1000
+                                </span>
+                                <div className="flex gap-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-xs"
+                                    onClick={() => { setReplyingTo(null); setReplyText(''); }}
+                                    disabled={submittingReply}
+                                  >
+                                    Отмена
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    className="text-xs gap-1.5"
+                                    onClick={() => handleReplySubmit(fb.id, fb.practiceId)}
+                                    disabled={submittingReply || !replyText.trim()}
+                                  >
+                                    {submittingReply ? (
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                    ) : (
+                                      <Send className="w-3 h-3" />
+                                    )}
+                                    Отправить
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 ))}

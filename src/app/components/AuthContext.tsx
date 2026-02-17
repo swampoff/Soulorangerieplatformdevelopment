@@ -27,13 +27,14 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Pages that require authentication
-const PROTECTED_PAGES = ['dashboard', 'instructor-panel', 'admin-panel'];
+const PROTECTED_PAGES = ['dashboard', 'instructor-panel', 'admin-panel', 'profile-settings'];
 
 // Role-based page access mapping
 const PAGE_ROLES: Record<string, UserRole[]> = {
   dashboard: ['student', 'instructor', 'admin'],
   'instructor-panel': ['instructor', 'admin'],
   'admin-panel': ['admin'],
+  'profile-settings': ['student', 'instructor', 'admin'],
 };
 
 // Fetch user profile from the server
@@ -85,8 +86,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (profile) {
             setUser(profile);
           } else {
-            // Session exists but no profile — sign out
-            console.log('Session exists but profile not found, signing out');
+            // Session exists but profile fetch failed (401/expired token) — clear stale session
+            console.log('Session exists but profile not found or token invalid, signing out');
+            setAccessToken(null);
             await supabase.auth.signOut();
           }
         }

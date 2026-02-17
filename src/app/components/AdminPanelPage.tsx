@@ -1,5 +1,6 @@
+import { useState, useEffect, useCallback } from 'react';
 import {
-  Users, TrendingUp, BookOpen, BarChart3, Settings,
+  Users, TrendingUp, BookOpen, BarChart3,
   Search, Shield, Edit, Trash2,
   Star, ArrowUpRight,
   Download, UserCheck, Loader2, MessageSquare, RefreshCw
@@ -102,6 +103,8 @@ export function AdminPanelPage({ onNavigate }: AdminPanelPageProps) {
   const [editRole, setEditRole] = useState('');
   const [editPlan, setEditPlan] = useState('');
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
   // Load dashboard stats
   const loadStats = useCallback(async () => {
@@ -224,6 +227,38 @@ export function AdminPanelPage({ onNavigate }: AdminPanelPageProps) {
     }
   };
 
+  // CSV export handler
+  const handleExport = async (type: 'users' | 'reviews') => {
+    if (!accessToken) return;
+    setExporting(true);
+    try {
+      const res = await authFetch(`/admin/export/${type}`, accessToken);
+      if (res.ok) {
+        const data = await res.json();
+        // Create and download CSV file
+        const BOM = '\uFEFF'; // UTF-8 BOM for Excel
+        const blob = new Blob([BOM + data.csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = data.filename || `export-${type}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        toast.success(`Экспорт ${type === 'users' ? 'пользователей' : 'отзывов'} завершён`);
+      } else {
+        const data = await res.json();
+        toast.error(data.error || 'Ошибка экспорта');
+      }
+    } catch (err) {
+      console.error('Export error:', err);
+      toast.error('Ошибка подключения');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const filteredUsers = users.filter((u) => {
     if (userFilter !== 'all' && u.role !== userFilter) return false;
     if (planFilter !== 'all' && u.plan !== planFilter) return false;
@@ -286,10 +321,39 @@ export function AdminPanelPage({ onNavigate }: AdminPanelPageProps) {
               <RefreshCw className="w-4 h-4" />
               <span className="hidden sm:inline">Обновить</span>
             </Button>
-            <Button variant="outline" size="sm" className="gap-2" onClick={() => toast.info('Экспорт данных')}>
-              <Download className="w-4 h-4" />
-              <span className="hidden sm:inline">Экспорт</span>
-            </Button>
+            <div className="relative">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => setShowExportMenu(!showExportMenu)}
+                disabled={exporting}
+              >
+                {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                <span className="hidden sm:inline">Экспорт</span>
+              </Button>
+              {showExportMenu && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowExportMenu(false)} />
+                  <div className="absolute right-0 top-full mt-2 w-56 bg-card border border-border rounded-xl shadow-lg z-50 overflow-hidden py-1">
+                    <button
+                      onClick={() => { handleExport('users'); setShowExportMenu(false); }}
+                      className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-foreground hover:bg-muted/50 cursor-pointer"
+                    >
+                      <Users className="w-4 h-4 text-muted-foreground" />
+                      Экспорт пользователей (CSV)
+                    </button>
+                    <button
+                      onClick={() => { handleExport('reviews'); setShowExportMenu(false); }}
+                      className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-foreground hover:bg-muted/50 cursor-pointer"
+                    >
+                      <MessageSquare className="w-4 h-4 text-muted-foreground" />
+                      Экспорт отзывов (CSV)
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
 

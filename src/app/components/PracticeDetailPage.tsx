@@ -780,6 +780,23 @@ export function PracticeDetailPage({ practiceId, onNavigate }: PracticeDetailPag
                           <p className="text-sm text-muted-foreground mt-3 leading-relaxed">
                             {review.text}
                           </p>
+
+                          {/* Instructor reply */}
+                          {review.reply && (
+                            <div className="mt-3 pl-4 border-l-2 border-[#7A9B6D]/30 bg-[#7A9B6D]/5 rounded-r-lg p-3">
+                              <div className="flex items-center gap-2 mb-1.5">
+                                <div className="w-6 h-6 rounded-full bg-[#7A9B6D]/20 flex items-center justify-center text-[10px] text-[#7A9B6D] shrink-0">
+                                  {review.reply.authorName.charAt(0).toUpperCase()}
+                                </div>
+                                <span className="text-xs font-medium text-[#7A9B6D]">{review.reply.authorName}</span>
+                                <Badge className="text-[9px] border-0 bg-[#7A9B6D]/10 text-[#7A9B6D] px-1.5 py-0">Преподаватель</Badge>
+                                <span className="text-[10px] text-muted-foreground">
+                                  {new Date(review.reply.createdAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+                                </span>
+                              </div>
+                              <p className="text-xs text-foreground/80 leading-relaxed">{review.reply.text}</p>
+                            </div>
+                          )}
                         </CardContent>
                       </Card>
                     );
@@ -882,4 +899,10 @@ interface ReviewData {
   practiceId: string;
   practiceTitle: string;
   createdAt: string;
+  reply?: {
+    text: string;
+    authorName: string;
+    authorId: string;
+    createdAt: string;
+  };
 }

@@ -207,8 +207,8 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="gap-2"><Bell className="w-4 h-4" /><span className="hidden sm:inline">Уведомления</span></Button>
-            <Button variant="outline" size="sm" className="gap-2"><Settings className="w-4 h-4" /><span className="hidden sm:inline">Настройки</span></Button>
+            <Button variant="outline" size="sm" className="gap-2" onClick={() => onNavigate('profile-settings')}><Bell className="w-4 h-4" /><span className="hidden sm:inline">Уведомления</span></Button>
+            <Button variant="outline" size="sm" className="gap-2" onClick={() => onNavigate('profile-settings')}><Settings className="w-4 h-4" /><span className="hidden sm:inline">Настройки</span></Button>
           </div>
         </div>
 
