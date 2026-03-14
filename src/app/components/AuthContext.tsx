@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
-import { getSupabase, authFetch } from './api';
+import { authFetch, anonFetch } from './api';
 
 export type UserRole = 'student' | 'instructor' | 'admin';
 
@@ -26,10 +26,8 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Pages that require authentication
 const PROTECTED_PAGES = ['dashboard', 'instructor-panel', 'admin-panel', 'profile-settings'];
 
-// Role-based page access mapping
 const PAGE_ROLES: Record<string, UserRole[]> = {
   dashboard: ['student', 'instructor', 'admin'],
   'instructor-panel': ['instructor', 'admin'],
@@ -37,7 +35,6 @@ const PAGE_ROLES: Record<string, UserRole[]> = {
   'profile-settings': ['student', 'instructor', 'admin'],
 };
 
-// Fetch user profile from the server
 async function fetchUserProfile(token: string): Promise<User | null> {
   try {
     const res = await authFetch('/user-profile', token);
@@ -66,30 +63,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [initialized, setInitialized] = useState(false);
   const initRef = useRef(false);
 
-  // Initialize: restore session from Supabase
+  // Initialize: restore session from localStorage
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
 
     const init = async () => {
       try {
-        const supabase = getSupabase();
-        const { data: { session }, error } = await supabase.auth.getSession();
-
-        if (error) {
-          console.error('Session restoration error:', error.message);
-        }
-
-        if (session?.access_token) {
-          setAccessToken(session.access_token);
-          const profile = await fetchUserProfile(session.access_token);
+        const savedToken = localStorage.getItem('access_token');
+        if (savedToken) {
+          setAccessToken(savedToken);
+          const profile = await fetchUserProfile(savedToken);
           if (profile) {
             setUser(profile);
           } else {
-            // Session exists but profile fetch failed (401/expired token) — clear stale session
-            console.log('Session exists but profile not found or token invalid, signing out');
+            // Token expired or invalid — clear
+            console.log('Token invalid or expired, clearing');
+            localStorage.removeItem('access_token');
             setAccessToken(null);
-            await supabase.auth.signOut();
           }
         }
       } catch (err) {
@@ -100,46 +91,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     init();
-
-    // Listen for auth state changes (token refresh, sign out)
-    const supabase = getSupabase();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_OUT') {
-        setUser(null);
-        setAccessToken(null);
-      } else if (event === 'TOKEN_REFRESHED' && session?.access_token) {
-        setAccessToken(session.access_token);
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
   }, []);
 
   const login = useCallback(async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      const supabase = getSupabase();
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      const res = await anonFetch('/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      });
 
-      if (error) {
-        console.error('Supabase signIn error:', error.message);
-        if (error.message.includes('Invalid login credentials')) {
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (data.error?.includes('Invalid login credentials')) {
           return { success: false, error: 'Неверный email или пароль' };
         }
-        if (error.message.includes('Email not confirmed')) {
-          return { success: false, error: 'Email не подтверждён' };
-        }
-        return { success: false, error: error.message };
+        return { success: false, error: data.error || 'Ошибка входа' };
       }
 
-      if (!data.session?.access_token) {
+      if (!data.token) {
         return { success: false, error: 'Не удалось получить токен сессии' };
       }
 
-      setAccessToken(data.session.access_token);
+      localStorage.setItem('access_token', data.token);
+      setAccessToken(data.token);
 
-      const profile = await fetchUserProfile(data.session.access_token);
+      if (data.user) {
+        setUser({
+          id: data.user.id,
+          name: data.user.name,
+          email: data.user.email,
+          role: data.user.role as UserRole,
+          plan: data.user.plan,
+          avatar: data.user.avatar,
+        });
+        return { success: true };
+      }
+
+      // Fallback: fetch profile
+      const profile = await fetchUserProfile(data.token);
       if (profile) {
         setUser(profile);
         return { success: true };
@@ -159,8 +149,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     role: UserRole
   ): Promise<{ success: boolean; error?: string }> => {
     try {
-      // Call server signup endpoint (uses publicAnonKey for auth)
-      const { anonFetch } = await import('./api');
       const res = await anonFetch('/signup', {
         method: 'POST',
         body: JSON.stringify({ email, password, name, role }),
@@ -169,14 +157,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const result = await res.json();
 
       if (!res.ok) {
-        console.error('Signup server error:', result.error);
-        if (result.error?.includes('already been registered') || result.error?.includes('already exists')) {
+        if (result.error?.includes('already exists')) {
           return { success: false, error: 'Пользователь с таким email уже зарегистрирован' };
         }
         return { success: false, error: result.error || 'Ошибка регистрации' };
       }
 
-      // Now sign in with the new credentials
+      // Server returns token on signup — use it directly
+      if (result.token) {
+        localStorage.setItem('access_token', result.token);
+        setAccessToken(result.token);
+        const profile = await fetchUserProfile(result.token);
+        if (profile) {
+          setUser(profile);
+          return { success: true };
+        }
+      }
+
+      // Fallback: login after signup
       return await login(email, password);
     } catch (err) {
       console.error('Unexpected registration error:', err);
@@ -185,10 +183,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [login]);
 
   const logout = useCallback(() => {
-    // Fire and forget the async signOut
-    getSupabase()
-      .auth.signOut()
-      .catch((err: unknown) => console.error('Logout error:', err));
+    localStorage.removeItem('access_token');
     setUser(null);
     setAccessToken(null);
   }, []);
@@ -204,11 +199,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const canAccess = useCallback(
     (page: string) => {
-      // Public pages are always accessible
       if (!PROTECTED_PAGES.includes(page)) return true;
-      // Must be authenticated
       if (!user) return false;
-      // Check role-based access
       const allowedRoles = PAGE_ROLES[page];
       if (!allowedRoles) return true;
       return allowedRoles.includes(user.role);
@@ -225,7 +217,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [accessToken]);
 
   if (!initialized) {
-    // Show a subtle loading state while restoring session
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">

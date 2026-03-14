@@ -15,7 +15,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { toast } from 'sonner';
 import { useAuth } from './AuthContext';
 import { authFetch } from './api';
-import { getSupabase } from './api';
 
 interface ProfileSettingsPageProps {
   onNavigate: (page: string) => void;
@@ -251,10 +250,13 @@ export function ProfileSettingsPage({ onNavigate }: ProfileSettingsPageProps) {
     }
     setChangingPassword(true);
     try {
-      const supabase = getSupabase();
-      const { error } = await supabase.auth.updateUser({ password: newPassword });
-      if (error) {
-        toast.error(`Ошибка смены пароля: ${error.message}`);
+      const res = await authFetch('/user-profile', accessToken!, {
+        method: 'PUT',
+        body: JSON.stringify({ password: newPassword }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        toast.error(`Ошибка смены пароля: ${data.error || 'Неизвестная ошибка'}`);
       } else {
         toast.success('Пароль успешно изменён');
         setOldPassword('');

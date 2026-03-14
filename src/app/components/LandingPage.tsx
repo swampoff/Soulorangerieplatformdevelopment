@@ -2,7 +2,7 @@ import { ArrowRight, Play, Star, ChevronRight, Check } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { DIRECTIONS, INSTRUCTORS, PRICING_PLANS, TESTIMONIALS } from './data';
-import { ImageWithFallback } from './figma/ImageWithFallback';
+import { ImageWithFallback } from './ImageWithFallback';
 
 interface LandingPageProps {
   onNavigate: (page: string) => void;

@@ -16,7 +16,7 @@ import {
   PRACTICES, DIRECTIONS, INSTRUCTORS, SCHEDULE_EVENTS,
   LEVEL_LABELS, FORMAT_LABELS
 } from './data';
-import { ImageWithFallback } from './figma/ImageWithFallback';
+import { ImageWithFallback } from './ImageWithFallback';
 import { useAuth } from './AuthContext';
 import { authFetch } from './api';
 

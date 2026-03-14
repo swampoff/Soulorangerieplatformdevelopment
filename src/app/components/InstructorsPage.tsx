@@ -3,7 +3,7 @@ import { BookOpen, Calendar } from 'lucide-react';
 import { Card, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
 import { INSTRUCTORS, DIRECTIONS, SCHEDULE_EVENTS } from './data';
-import { ImageWithFallback } from './figma/ImageWithFallback';
+import { ImageWithFallback } from './ImageWithFallback';
 
 interface InstructorsPageProps {
   onNavigate: (page: string) => void;

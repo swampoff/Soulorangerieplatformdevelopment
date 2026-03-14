@@ -1,38 +1,36 @@
-import { createClient } from '@supabase/supabase-js';
-import { projectId, publicAnonKey } from '/utils/supabase/info';
+export const SERVER_BASE = '/api';
 
-export const SUPABASE_URL = `https://${projectId}.supabase.co`;
-export const SERVER_BASE = `${SUPABASE_URL}/functions/v1/make-server-5b6cbf80`;
+// Authenticated fetch helper (uses JWT token from localStorage)
+export async function authFetch(path: string, _tokenOrOptions?: string | RequestInit, options?: RequestInit) {
+  // Support both old signature (path, token, options) and new (path, options)
+  let token: string | null = null;
+  let fetchOptions: RequestInit | undefined;
 
-// Singleton Supabase client
-let _supabase: ReturnType<typeof createClient> | null = null;
-export function getSupabase() {
-  if (!_supabase) {
-    _supabase = createClient(SUPABASE_URL, publicAnonKey);
+  if (typeof _tokenOrOptions === 'string') {
+    token = _tokenOrOptions;
+    fetchOptions = options;
+  } else {
+    token = localStorage.getItem('access_token');
+    fetchOptions = _tokenOrOptions;
   }
-  return _supabase;
-}
 
-// Authenticated fetch helper (uses user's access token)
-export async function authFetch(path: string, token: string, options?: RequestInit) {
   const res = await fetch(`${SERVER_BASE}${path}`, {
-    ...options,
+    ...fetchOptions,
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-      ...(options?.headers || {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(fetchOptions?.headers || {}),
     },
   });
   return res;
 }
 
-// Unauthenticated fetch helper (uses anon key)
+// Unauthenticated fetch helper
 export async function anonFetch(path: string, options?: RequestInit) {
   const res = await fetch(`${SERVER_BASE}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${publicAnonKey}`,
       ...(options?.headers || {}),
     },
   });

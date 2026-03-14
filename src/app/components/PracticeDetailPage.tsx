@@ -10,7 +10,7 @@ import { Badge } from './ui/badge';
 import { Progress } from './ui/progress';
 import { toast } from 'sonner';
 import { PRACTICES, DIRECTIONS, INSTRUCTORS, LEVEL_LABELS, FORMAT_LABELS } from './data';
-import { ImageWithFallback } from './figma/ImageWithFallback';
+import { ImageWithFallback } from './ImageWithFallback';
 import { useAuth } from './AuthContext';
 import { authFetch, anonFetch } from './api';
 import confetti from 'canvas-confetti';

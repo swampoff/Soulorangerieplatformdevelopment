@@ -8,7 +8,7 @@ import { Card, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
 import { Input } from './ui/input';
 import { PRACTICES, DIRECTIONS, INSTRUCTORS, LEVEL_LABELS, FORMAT_LABELS } from './data';
-import { ImageWithFallback } from './figma/ImageWithFallback';
+import { ImageWithFallback } from './ImageWithFallback';
 import { useAuth } from './AuthContext';
 import { authFetch } from './api';
 import { useFavorites } from './useFavorites';

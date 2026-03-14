@@ -1,18 +1,14 @@
-import { useEffect, useRef, useCallback } from 'react';
-import { getSupabase } from './api';
-
-const KV_TABLE = 'kv_store_5b6cbf80';
+import { useEffect, useRef } from 'react';
 
 type Callback = () => void;
 
 /**
- * Subscribes to Supabase Realtime changes on the KV table.
- * When a key matching one of the provided prefixes changes, the callback fires.
- * Falls back to periodic polling if Realtime is unavailable.
+ * Periodic polling for data updates.
+ * Replaces Supabase Realtime with simple interval-based refresh.
  *
- * @param keyPrefixes — Array of key prefixes to watch (e.g. ["reviews:practice:5", "schedule:bookings:"])
- * @param callback — Function to call when a matching change is detected
- * @param pollIntervalMs — Fallback poll interval in ms (default: 15000)
+ * @param keyPrefixes — Array of key prefixes (kept for API compatibility, not used)
+ * @param callback — Function to call periodically
+ * @param pollIntervalMs — Poll interval in ms (default: 15000)
  */
 export function useRealtimeUpdates(
   keyPrefixes: string[],
@@ -26,64 +22,13 @@ export function useRealtimeUpdates(
 
   useEffect(() => {
     if (!prefixesKey) return;
-
-    const supabase = getSupabase();
-    let pollTimer: ReturnType<typeof setInterval> | null = null;
-    let realtimeActive = false;
-
-    // Try Supabase Realtime subscription
-    const channelName = `kv-watch-${prefixesKey.slice(0, 30)}-${Date.now()}`;
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes' as any,
-        {
-          event: '*',
-          schema: 'public',
-          table: KV_TABLE,
-        },
-        (payload: any) => {
-          const changedKey = payload?.new?.key || payload?.old?.key || '';
-          const prefixes = prefixesKey.split(',');
-          if (prefixes.some((p) => changedKey.startsWith(p))) {
-            callbackRef.current();
-          }
-        }
-      )
-      .subscribe((status: string) => {
-        if (status === 'SUBSCRIBED') {
-          realtimeActive = true;
-          // Clear poll timer if realtime works
-          if (pollTimer) {
-            clearInterval(pollTimer);
-            pollTimer = null;
-          }
-        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-          realtimeActive = false;
-          // Start polling as fallback
-          if (!pollTimer) {
-            pollTimer = setInterval(() => callbackRef.current(), pollIntervalMs);
-          }
-        }
-      });
-
-    // Start polling immediately as a safety net; will be cleared if realtime kicks in
-    pollTimer = setInterval(() => {
-      if (!realtimeActive) {
-        callbackRef.current();
-      }
-    }, pollIntervalMs);
-
-    return () => {
-      supabase.removeChannel(channel);
-      if (pollTimer) clearInterval(pollTimer);
-    };
+    const timer = setInterval(() => callbackRef.current(), pollIntervalMs);
+    return () => clearInterval(timer);
   }, [prefixesKey, pollIntervalMs]);
 }
 
 /**
- * A lightweight variant: simple periodic polling without Realtime.
- * Useful when you just need auto-refresh.
+ * A lightweight variant: simple periodic polling.
  */
 export function usePolling(callback: Callback, intervalMs: number, enabled = true) {
   const callbackRef = useRef(callback);
