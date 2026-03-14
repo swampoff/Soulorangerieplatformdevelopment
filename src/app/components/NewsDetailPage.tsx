@@ -23,16 +23,16 @@ interface NewsDetailPageProps {
 
 const AUTHORS: Record<string, { name: string; fullName: string; avatar: string; bio: string }> = {
   nik: {
-    name: 'Мастер Ник',
+    name: 'Ник',
     fullName: 'Ник',
     avatar: '/platform/avatars/nik.jpg',
-    bio: 'Мастер духовных практик, исследователь внутренних пространств',
+    bio: 'Духовный исследователь, практик трансформационных методов',
   },
   pavel: {
-    name: 'Мастер Павел',
+    name: 'Павел',
     fullName: 'Павел',
     avatar: '/platform/avatars/pavel.jpg',
-    bio: 'Практик, преподаватель, исследователь телесных и энергетических практик',
+    bio: 'Практик, преподаватель телесных и энергетических практик',
   },
 };
 

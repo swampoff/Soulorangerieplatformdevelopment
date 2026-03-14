@@ -21,8 +21,8 @@ interface NewsPageProps {
 }
 
 const AUTHORS: Record<string, { name: string; avatar: string }> = {
-  nik: { name: 'Мастер Ник', avatar: '/platform/avatars/nik.jpg' },
-  pavel: { name: 'Мастер Павел', avatar: '/platform/avatars/pavel.jpg' },
+  nik: { name: 'Ник', avatar: '/platform/avatars/nik.jpg' },
+  pavel: { name: 'Павел', avatar: '/platform/avatars/pavel.jpg' },
 };
 
 function getDirectionInfo(id: string) {
