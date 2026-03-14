@@ -1,0 +1,24 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: 89.104.94.27
+          username: root
+          password: ${{ secrets.VPS_PASSWORD }}
+          script: |
+            cd /opt/soulorangerie-platform
+            git pull origin main
+            npm install --legacy-peer-deps
+            npm run build
+            cd server && npm install --production && cd ..
+            pm2 restart ecosystem.config.cjs
+            echo "Deploy complete: $(date)"
