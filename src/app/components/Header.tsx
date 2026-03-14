@@ -216,19 +216,6 @@ export function Header({ currentPage, onNavigate }: HeaderProps) {
                     <span className="hidden lg:inline">Преподаватель</span>
                   </Button>
                 )}
-                {hasRole('admin') && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className={`hidden sm:flex items-center gap-1.5 text-xs hover:text-foreground ${
-                      currentPage === 'admin-panel' ? 'text-primary bg-primary/10' : 'text-muted-foreground'
-                    }`}
-                    onClick={() => onNavigate('admin-panel')}
-                  >
-                    <Shield className="w-4 h-4" />
-                    <span className="hidden lg:inline">Админ</span>
-                  </Button>
-                )}
 
                 {/* Notification Bell */}
                 <div className="relative" ref={bellRef}>
@@ -369,15 +356,6 @@ export function Header({ currentPage, onNavigate }: HeaderProps) {
                               Панель преподавателя
                             </button>
                           )}
-                          {hasRole('admin') && (
-                            <button
-                              onClick={() => { onNavigate('admin-panel'); setUserMenuOpen(false); }}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted/50 cursor-pointer"
-                            >
-                              <Shield className="w-4 h-4 text-muted-foreground" />
-                              Админ-панель
-                            </button>
-                          )}
                           <button
                             onClick={() => { onNavigate('profile-settings'); setUserMenuOpen(false); }}
                             className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted/50 cursor-pointer"
@@ -504,17 +482,6 @@ export function Header({ currentPage, onNavigate }: HeaderProps) {
                     </button>
                   )}
 
-                  {hasRole('admin') && (
-                    <button
-                      onClick={() => {
-                        onNavigate('admin-panel');
-                        setMobileOpen(false);
-                      }}
-                      className="px-3 py-2 rounded-lg text-sm text-left text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-2"
-                    >
-                      <Shield className="w-4 h-4" /> Админ-панель
-                    </button>
-                  )}
 
                   <button
                     onClick={() => {

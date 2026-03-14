@@ -31,7 +31,7 @@ const PAGE_TO_PATH: Record<string, string> = {
   auth: '/auth',
   dashboard: '/dashboard',
   'instructor-panel': '/instructor-panel',
-  'admin-panel': '/admin-panel',
+  'admin-panel': '/manage-s0ul',
   'profile-settings': '/settings',
 };
 
@@ -166,7 +166,7 @@ function AuthRoute() {
 
   if (isAuthenticated) {
     // Redirect by role
-    if (user?.role === 'admin') return <Navigate to="/admin-panel" replace />;
+    if (user?.role === 'admin') return <Navigate to="/manage-s0ul" replace />;
     if (user?.role === 'instructor') return <Navigate to="/instructor-panel" replace />;
     return <Navigate to="/dashboard" replace />;
   }
@@ -232,7 +232,7 @@ export const router = createBrowserRouter([
       { path: 'auth', Component: AuthRoute },
       { path: 'dashboard', Component: DashboardRoute },
       { path: 'instructor-panel', Component: InstructorPanelRoute },
-      { path: 'admin-panel', Component: AdminPanelRoute },
+      { path: 'manage-s0ul', Component: AdminPanelRoute },
       { path: 'settings', Component: SettingsRoute },
       // Legacy alias so old "profile-settings" links still work
       { path: 'profile-settings', element: <Navigate to="/settings" replace /> },

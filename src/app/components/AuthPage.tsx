@@ -8,17 +8,10 @@ import { Input } from './ui/input';
 import { Card, CardContent } from './ui/card';
 import { toast } from 'sonner';
 import { useAuth, type UserRole } from './AuthContext';
-import { anonFetch } from './api';
 
 interface AuthPageProps {
   onNavigate: (page: string) => void;
 }
-
-const DEMO_ACCOUNTS = [
-  { role: 'Ученик', email: 'student@test.com', password: 'password123', icon: UserCircle, color: '#7A9B6D' },
-  { role: 'Преподаватель', email: 'instructor@test.com', password: 'password123', icon: GraduationCap, color: '#A8C5DA' },
-  { role: 'Администратор', email: 'admin@test.com', password: 'password123', icon: User, color: '#C4B5D4' },
-];
 
 export function AuthPage({ onNavigate }: AuthPageProps) {
   const { login, register } = useAuth();
@@ -105,48 +98,6 @@ export function AuthPage({ onNavigate }: AuthPageProps) {
       onNavigate('dashboard');
     } else {
       setError(result.error || 'Ошибка регистрации');
-    }
-  };
-
-  const handleDemoLogin = async (demoEmail: string, demoPassword: string) => {
-    setEmail(demoEmail);
-    setPassword(demoPassword);
-    setError('');
-    setLoading(true);
-
-    // Ensure demo accounts exist in Supabase (idempotent) — must succeed before login
-    let seedOk = false;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const seedRes = await anonFetch('/seed-demo', { method: 'POST' });
-        if (seedRes.ok) {
-          const seedData = await seedRes.json();
-          console.log('Seed-demo result:', seedData);
-          seedOk = true;
-          break;
-        } else {
-          const errBody = await seedRes.text();
-          console.error(`Seed-demo attempt ${attempt + 1} failed (status ${seedRes.status}):`, errBody);
-        }
-      } catch (seedErr) {
-        console.error(`Seed-demo attempt ${attempt + 1} network error:`, seedErr);
-      }
-      // Small delay before retry
-      if (attempt < 1) await new Promise(r => setTimeout(r, 1000));
-    }
-
-    if (!seedOk) {
-      console.warn('Seed-demo failed after retries, attempting login anyway');
-    }
-
-    const result = await login(demoEmail, demoPassword);
-    setLoading(false);
-
-    if (result.success) {
-      toast.success('Добро пожаловать! (демо-аккаунт)');
-      onNavigate('dashboard');
-    } else {
-      setError(result.error || 'Ошибка входа');
     }
   };
 
@@ -329,35 +280,6 @@ export function AuthPage({ onNavigate }: AuthPageProps) {
                       )}
                     </Button>
 
-                    {/* Demo accounts */}
-                    <div className="mt-6 pt-6 border-t border-border">
-                      <p className="text-xs text-muted-foreground text-center mb-3">
-                        Демо-аккаунты для тестирования
-                      </p>
-                      <div className="space-y-2">
-                        {DEMO_ACCOUNTS.map((demo) => (
-                          <button
-                            key={demo.role}
-                            type="button"
-                            onClick={() => handleDemoLogin(demo.email, demo.password)}
-                            disabled={loading}
-                            className="w-full flex items-center gap-3 p-3 rounded-xl border border-border hover:border-primary/30 hover:bg-primary/5 transition-all text-left cursor-pointer disabled:opacity-50"
-                          >
-                            <div
-                              className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
-                              style={{ backgroundColor: `${demo.color}20` }}
-                            >
-                              <demo.icon className="w-4 h-4" style={{ color: demo.color }} />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm text-foreground">{demo.role}</div>
-                              <div className="text-xs text-muted-foreground truncate">{demo.email}</div>
-                            </div>
-                            <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0" />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
                   </form>
                 ) : (
                   <form onSubmit={handleRegister} className="space-y-4">
