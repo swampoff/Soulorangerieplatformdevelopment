@@ -4,13 +4,38 @@ import { logger } from 'hono/logger';
 import { serve } from '@hono/node-server';
 import { v4 as uuidv4 } from 'uuid';
 import db from './db.js';
-import { hashPassword, verifyPassword, createToken, getAuthUser, requireAuth, requireRole } from './auth.js';
+import { hashPassword, verifyPassword, createToken, getAuthUser } from './auth.js';
+
+// Sanitize HTML to prevent XSS
+function sanitizeHtml(str) {
+  if (typeof str !== 'string') return str;
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Rate limiter (in-memory)
+const rateLimits = new Map();
+function rateLimit(key, maxAttempts, windowMs) {
+  const now = Date.now();
+  const entry = rateLimits.get(key);
+  if (!entry || now - entry.start > windowMs) {
+    rateLimits.set(key, { start: now, count: 1 });
+    return true;
+  }
+  entry.count++;
+  return entry.count <= maxAttempts;
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rateLimits) {
+    if (now - entry.start > 300000) rateLimits.delete(key);
+  }
+}, 300000);
 
 const app = new Hono();
 
 app.use('*', logger());
 app.use('/*', cors({
-  origin: '*',
+  origin: ['https://soulorangerie.ru', 'https://www.soulorangerie.ru', 'http://localhost:5173'],
   allowHeaders: ['Content-Type', 'Authorization'],
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   exposeHeaders: ['Content-Length'],
@@ -27,10 +52,19 @@ app.get('/api/health', (c) => c.json({ status: 'ok' }));
 // ============================================================
 app.post('/api/signup', async (c) => {
   try {
-    const { email, password, name, role = 'student' } = await c.req.json();
+    const clientIp = c.req.header('x-real-ip') || 'unknown';
+    if (!rateLimit('signup:' + clientIp, 3, 60000)) {
+      return c.json({ error: 'Слишком много попыток. Подождите минуту' }, 429);
+    }
+
+    const { email, password, name } = await c.req.json();
     if (!email || !password || !name) {
       return c.json({ error: 'Email, password, and name are required' }, 400);
     }
+    if (String(email).length > 254) return c.json({ error: 'Email too long' }, 400);
+    if (String(name).length > 100) return c.json({ error: 'Name too long' }, 400);
+    if (String(password).length < 6) return c.json({ error: 'Password must be at least 6 characters' }, 400);
+    if (String(password).length > 128) return c.json({ error: 'Password too long' }, 400);
 
     const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
     if (existing) {
@@ -39,19 +73,19 @@ app.post('/api/signup', async (c) => {
 
     const id = uuidv4();
     const password_hash = hashPassword(password);
-    const avatar = name.charAt(0).toUpperCase();
-    const validRole = ['student', 'instructor', 'admin'].includes(role) ? role : 'student';
+    const safeName = sanitizeHtml(String(name).slice(0, 100));
+    const avatar = safeName.charAt(0).toUpperCase();
 
     db.prepare(
       'INSERT INTO users (id, email, password_hash, name, role, plan, avatar) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(id, email, password_hash, name, validRole, 'free', avatar);
+    ).run(id, email, password_hash, safeName, 'student', 'free', avatar);
 
-    const token = createToken({ id, email, role: validRole });
-    console.log(`User created: ${email} (${id}), role=${validRole}`);
+    const token = createToken({ id, email, role: 'student' });
+    console.log(`User created: ${email} (${id}), role=student`);
     return c.json({ success: true, userId: id, token });
   } catch (err) {
     console.log(`Signup error: ${err}`);
-    return c.json({ error: `Signup failed: ${err.message}` }, 500);
+    return c.json({ error: 'Signup failed' }, 500);
   }
 });
 
@@ -60,6 +94,11 @@ app.post('/api/signup', async (c) => {
 // ============================================================
 app.post('/api/login', async (c) => {
   try {
+    const clientIp = c.req.header('x-real-ip') || 'unknown';
+    if (!rateLimit('login:' + clientIp, 5, 60000)) {
+      return c.json({ error: 'Слишком много попыток. Подождите минуту' }, 429);
+    }
+
     const { email, password } = await c.req.json();
     if (!email || !password) {
       return c.json({ error: 'Email and password are required' }, 400);
@@ -79,7 +118,7 @@ app.post('/api/login', async (c) => {
     });
   } catch (err) {
     console.log(`Login error: ${err}`);
-    return c.json({ error: `Login failed: ${err.message}` }, 500);
+    return c.json({ error: 'Login failed' }, 500);
   }
 });
 
@@ -116,7 +155,7 @@ app.put('/api/user-profile', async (c) => {
   for (const key of allowed) {
     if (updates[key] !== undefined) {
       sets.push(`${key} = ?`);
-      vals.push(updates[key]);
+      vals.push(sanitizeHtml(String(updates[key]).slice(0, 100)));
     }
   }
   if (sets.length > 0) {
@@ -129,32 +168,7 @@ app.put('/api/user-profile', async (c) => {
   return c.json(updated);
 });
 
-// ============================================================
-// POST /api/seed-demo
-// ============================================================
-app.post('/api/seed-demo', async (c) => {
-  const demoUsers = [
-    { email: 'student@test.com', password: 'password123', name: 'Алина Морозова', role: 'student', plan: 'premium', avatar: 'А' },
-    { email: 'instructor@test.com', password: 'password123', name: 'Елена Светлова', role: 'instructor', plan: 'unlimited', avatar: 'Е' },
-    { email: 'admin@test.com', password: 'password123', name: 'Администратор', role: 'admin', plan: 'unlimited', avatar: 'A' },
-  ];
-
-  const results = [];
-  for (const demo of demoUsers) {
-    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(demo.email);
-    if (existing) {
-      db.prepare('UPDATE users SET name = ?, role = ?, plan = ?, avatar = ?, password_hash = ? WHERE id = ?')
-        .run(demo.name, demo.role, demo.plan, demo.avatar, hashPassword(demo.password), existing.id);
-      results.push({ email: demo.email, status: 'updated' });
-    } else {
-      const id = uuidv4();
-      db.prepare('INSERT INTO users (id, email, password_hash, name, role, plan, avatar) VALUES (?, ?, ?, ?, ?, ?, ?)')
-        .run(id, demo.email, hashPassword(demo.password), demo.name, demo.role, demo.plan, demo.avatar);
-      results.push({ email: demo.email, status: 'created' });
-    }
-  }
-  return c.json({ success: true, results });
-});
+// seed-demo endpoint removed for security
 
 // ============================================================
 // GET /api/user-progress
@@ -203,6 +217,7 @@ app.get('/api/user-subscription', async (c) => {
 app.put('/api/user-subscription', async (c) => {
   const user = getAuthUser(c.req.header('Authorization'));
   if (!user) return c.json({ error: 'Unauthorized' }, 401);
+  if (user.role !== 'admin') return c.json({ error: 'Forbidden: admin only' }, 403);
 
   const updates = await c.req.json();
   db.prepare(`INSERT INTO subscriptions (user_id, plan, status) VALUES (?, ?, 'active')
@@ -897,7 +912,7 @@ app.post('/api/search-history', async (c) => {
 
 app.get('/api/search-history', async (c) => {
   const user = getAuthUser(c.req.header('Authorization'));
-  if (!user) return c.json({ history: [] });
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
 
   const rows = db.prepare('SELECT query FROM search_history WHERE user_id = ? ORDER BY created_at DESC LIMIT 20').all(user.id);
   return c.json({ history: rows.map(r => r.query) });

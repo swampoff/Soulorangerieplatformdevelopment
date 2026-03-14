@@ -2,7 +2,11 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import db from './db.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'soulorangerie-secret-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET environment variable is not set');
+  process.exit(1);
+}
 const JWT_EXPIRES_IN = '7d';
 
 export function hashPassword(password) {
