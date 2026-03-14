@@ -109,6 +109,22 @@ CREATE INDEX IF NOT EXISTS idx_bookings_event ON bookings(event_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_practice ON reviews(practice_id);
 CREATE INDEX IF NOT EXISTS idx_search_history_user ON search_history(user_id);
+
+CREATE TABLE IF NOT EXISTS posts (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  excerpt TEXT,
+  direction TEXT NOT NULL,
+  author TEXT NOT NULL,
+  image TEXT,
+  published INTEGER DEFAULT 0,
+  sent_to_telegram INTEGER DEFAULT 0,
+  telegram_message_id INTEGER,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_posts_direction ON posts(direction);
 `);
 
 export default db;

@@ -29,6 +29,7 @@ const NAV_ITEMS = [
   { id: 'instructors', label: 'Преподаватели' },
   { id: 'pricing', label: 'Тарифы' },
   { id: 'diagnostic', label: 'Диагностика' },
+  { id: 'news', label: 'Блог' },
 ];
 
 export function Header({ currentPage, onNavigate }: HeaderProps) {

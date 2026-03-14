@@ -17,6 +17,8 @@ import { AdminPanelPage } from './components/AdminPanelPage';
 import { AuthPage } from './components/AuthPage';
 import { AccessDeniedPage } from './components/AccessDeniedPage';
 import { ProfileSettingsPage } from './components/ProfileSettingsPage';
+import { NewsPage } from './components/NewsPage';
+import { NewsDetailPage } from './components/NewsDetailPage';
 
 // ============================================================
 // Mapping between legacy page IDs and URL paths
@@ -32,6 +34,7 @@ const PAGE_TO_PATH: Record<string, string> = {
   dashboard: '/dashboard',
   'instructor-panel': '/instructor-panel',
   'admin-panel': '/manage-s0ul',
+  news: '/news',
   'profile-settings': '/settings',
 };
 
@@ -45,6 +48,10 @@ function pageToPath(page: string): string {
   if (page.startsWith('practice:')) {
     const id = page.split(':')[1];
     return `/practices/${id}`;
+  }
+  if (page.startsWith('post:')) {
+    const id = page.split(':')[1];
+    return `/news/${id}`;
   }
   return PAGE_TO_PATH[page] || '/';
 }
@@ -201,6 +208,17 @@ function AdminPanelRoute() {
   );
 }
 
+function NewsRoute() {
+  const { onNavigate } = useAppNavigate();
+  return <NewsPage onNavigate={onNavigate} />;
+}
+
+function NewsDetailRoute() {
+  const { id } = useParams();
+  const { onNavigate } = useAppNavigate();
+  return <NewsDetailPage postId={id || ''} onNavigate={onNavigate} />;
+}
+
 function SettingsRoute() {
   const { onNavigate } = useAppNavigate();
   return (
@@ -229,6 +247,8 @@ export const router = createBrowserRouter([
       { path: 'schedule', Component: ScheduleRoute },
       { path: 'instructors', Component: InstructorsRoute },
       { path: 'pricing', Component: PricingRoute },
+      { path: 'news', Component: NewsRoute },
+      { path: 'news/:id', Component: NewsDetailRoute },
       { path: 'auth', Component: AuthRoute },
       { path: 'dashboard', Component: DashboardRoute },
       { path: 'instructor-panel', Component: InstructorPanelRoute },
@@ -239,4 +259,4 @@ export const router = createBrowserRouter([
       { path: '*', Component: NotFoundRoute },
     ],
   },
-]);
+], { basename: '/platform' });

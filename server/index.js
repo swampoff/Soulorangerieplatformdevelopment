@@ -950,6 +950,51 @@ app.get('/api/admin/export/reviews', async (c) => {
 });
 
 // ============================================================
+// Posts / Blog
+// ============================================================
+app.get('/api/posts', (c) => {
+  const page = Math.max(1, parseInt(c.req.query('page') || '1'));
+  const limit = Math.min(50, Math.max(1, parseInt(c.req.query('limit') || '10')));
+  const direction = c.req.query('direction');
+  const offset = (page - 1) * limit;
+
+  let conditions = ['published = 1'];
+  const params = [];
+  if (direction) {
+    conditions.push('direction = ?');
+    params.push(direction);
+  }
+  const where = 'WHERE ' + conditions.join(' AND ');
+
+  const total = db.prepare(`SELECT COUNT(*) as count FROM posts ${where}`).get(...params).count;
+  const posts = db.prepare(`SELECT id, title, excerpt, direction, author, image, created_at FROM posts ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params, limit, offset);
+
+  return c.json({ posts, total, page, limit, pages: Math.ceil(total / limit) });
+});
+
+app.get('/api/posts/:id', (c) => {
+  const post = db.prepare('SELECT * FROM posts WHERE id = ? AND published = 1').get(c.req.param('id'));
+  if (!post) return c.json({ error: 'Post not found' }, 404);
+  return c.json(post);
+});
+
+app.post('/api/posts', async (c) => {
+  const user = getAuthUser(c.req.header('Authorization'));
+  if (!user || user.role !== 'admin') return c.json({ error: 'Forbidden' }, 403);
+
+  const body = await c.req.json();
+  const { title, content, excerpt, direction, author, image } = body;
+  if (!title || !content || !direction || !author) {
+    return c.json({ error: 'title, content, direction, author are required' }, 400);
+  }
+
+  const id = `post-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  db.prepare('INSERT INTO posts (id, title, content, excerpt, direction, author, image, published) VALUES (?, ?, ?, ?, ?, ?, ?, 0)').run(id, sanitizeHtml(title), content, sanitizeHtml(excerpt || ''), direction, author, image || null);
+
+  return c.json({ success: true, id });
+});
+
+// ============================================================
 // Start server
 // ============================================================
 const port = Number(process.env.PORT) || 3100;

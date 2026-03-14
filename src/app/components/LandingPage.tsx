@@ -1,14 +1,40 @@
-import { ArrowRight, Play, Star, ChevronRight, Check } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ArrowRight, Play, Star, ChevronRight, Check, Calendar } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
+import { Badge } from './ui/badge';
 import { DIRECTIONS, INSTRUCTORS, PRICING_PLANS, TESTIMONIALS } from './data';
 import { ImageWithFallback } from './ImageWithFallback';
+import { anonFetch } from './api';
 
 interface LandingPageProps {
   onNavigate: (page: string) => void;
 }
 
+interface BlogPost {
+  id: string;
+  title: string;
+  excerpt: string;
+  direction: string;
+  author: string;
+  created_at: string;
+}
+
+const BLOG_AUTHORS: Record<string, { name: string; avatar: string }> = {
+  nik: { name: 'Мастер Ник', avatar: '/platform/avatars/nik.jpg' },
+  pavel: { name: 'Мастер Павел', avatar: '/platform/avatars/pavel.jpg' },
+};
+
 export function LandingPage({ onNavigate }: LandingPageProps) {
+  const [blogPosts, setBlogPosts] = useState<BlogPost[]>([]);
+
+  useEffect(() => {
+    anonFetch('/posts?limit=3')
+      .then(r => r.ok ? r.json() : { posts: [] })
+      .then(data => setBlogPosts(data.posts || []))
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
@@ -319,6 +345,64 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
           </div>
         </div>
       </section>
+
+      {/* Blog Section */}
+      {blogPosts.length > 0 && (
+        <section className="py-20 relative bg-secondary/20">
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute bottom-0 left-1/4 w-[300px] h-[300px] rounded-full bg-[#C4B5D4]/8 blur-[80px]" />
+          </div>
+          <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-14">
+              <h2 style={{ fontFamily: "'Cormorant Garamond', serif" }} className="text-3xl sm:text-4xl mb-4 text-foreground">Блог мастеров</h2>
+              <p className="text-muted-foreground max-w-2xl mx-auto">Глубокие статьи, духовные практики и мудрость от наших мастеров</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {blogPosts.map((post) => {
+                const dir = DIRECTIONS.find(d => d.id === post.direction) || { name: post.direction, color: '#7A9B6D', icon: '📝' };
+                const author = BLOG_AUTHORS[post.author] || { name: post.author, avatar: '' };
+                const date = new Date(post.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+
+                return (
+                  <Card
+                    key={post.id}
+                    className="group border-border/50 hover:border-primary/20 hover:shadow-lg transition-all cursor-pointer overflow-hidden"
+                    onClick={() => onNavigate(`post:${post.id}`)}
+                  >
+                    <CardContent className="p-0">
+                      <div className="h-1.5" style={{ backgroundColor: dir.color }} />
+                      <div className="p-5">
+                        <div className="flex items-center justify-between mb-3">
+                          <Badge variant="secondary" className="text-xs font-normal" style={{ backgroundColor: `${dir.color}15`, color: dir.color }}>
+                            {dir.icon} {dir.name}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">{date}</span>
+                        </div>
+                        <h3 className="text-base font-medium text-foreground mb-2 line-clamp-2 group-hover:text-primary transition-colors leading-snug">
+                          {post.title}
+                        </h3>
+                        <p className="text-sm text-muted-foreground line-clamp-2 mb-4">{post.excerpt}</p>
+                        <div className="flex items-center gap-2 pt-3 border-t border-border/50">
+                          <img src={author.avatar} alt={author.name} className="w-7 h-7 rounded-full object-cover" />
+                          <span className="text-sm text-muted-foreground">{author.name}</span>
+                          <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors ml-auto" />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+
+            <div className="text-center mt-10">
+              <Button variant="outline" size="lg" onClick={() => onNavigate('news')}>
+                Все статьи <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Testimonials */}
       <section className="py-20 relative">
